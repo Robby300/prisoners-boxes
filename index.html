@@ -159,6 +159,8 @@
           <option value="250" selected>средне</option>
           <option value="500">медленно</option>
         </select>
+        <label for="prisonerInput">Заключённый №:</label>
+        <input type="number" id="prisonerInput" min="1" max="100" placeholder="случ." style="width:90px;">
         <button id="animBtn">Показать забег</button>
         <button id="animResetBtn" class="ghost">Заново</button>
       </div>
@@ -228,14 +230,18 @@ function shufflePerm(n, rng) {
 // Номер внутри ящика. Единственное место, где переводим 1-индексацию в 0.
 function inBox(perm, box) { return perm[box - 1]; }
 
-// Раскладка с ровно одним циклом 1→2→…→L→1, остальные — неподвижные точки.
+// Раскладка с ровно одним циклом длины L из случайно выбранных номеров,
+// остальные — неподвижные точки. Возвращает { perm, cycle }: cycle — номера
+// цикла в порядке прохода, заключённый cycle[0] вернётся к себе за L шагов.
 // Для демо: L=8 — короткий цикл (успех), L=60 — длинный (провал).
-function makeCycleLayout(L) {
+function makeCycleLayout(L, rng) {
   const perm = new Array(N);
   for (let i = 0; i < N; i++) perm[i] = i + 1;
-  for (let i = 0; i < L - 1; i++) perm[i] = i + 2;
-  perm[L - 1] = 1;
-  return perm;
+  const cycle = shufflePerm(N, rng).slice(0, L);
+  for (let i = 0; i < L; i++) {
+    perm[cycle[i] - 1] = cycle[(i + 1) % L];
+  }
+  return { perm, cycle };
 }
 
 // Длина самого длинного цикла в перестановке. Ключ к стратегии циклов.
@@ -343,7 +349,8 @@ function runSimulation() {
   setCard(document.getElementById('randCard'), res.runs, res.randWins, res.randRate);
   setCard(document.getElementById('loopCard'), res.runs, res.loopWins, res.loopRate);
   if (autoAnimCheck.checked) {
-    startAnimation(shufflePerm(N, rng), 1, currentSpeed());
+    const { perm, prisoner } = getDemo();
+    startAnimation(perm, prisoner, currentSpeed());
   }
 }
 
@@ -364,6 +371,7 @@ const gridCanvas = document.getElementById('grid');
 const ctx = gridCanvas.getContext('2d');
 const layoutSelect = document.getElementById('layoutSelect');
 const speedSelect = document.getElementById('speedSelect');
+const prisonerInput = document.getElementById('prisonerInput');
 const animBtn = document.getElementById('animBtn');
 const animResetBtn = document.getElementById('animResetBtn');
 const logEl = document.getElementById('log');
@@ -494,12 +502,32 @@ function appendLog(text, cls) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
-function getLayoutPerm() {
-  switch (layoutSelect.value) {
-    case 'short': return makeCycleLayout(8);
-    case 'long':  return makeCycleLayout(60);
-    default:      return shufflePerm(N, mulberry32(Date.now() >>> 0));
+// Демо-забег: возвращает { perm, prisoner }.
+// Для «Короткого/Длинного цикла» строим детерминированную демонстрационную
+// раскладку с циклом из случайных номеров и переиспользуем её, пока выбран
+// тот же тип — номер заключённого в поле не меняется между запусками.
+let demoState = null;   // { layoutValue, perm, prisoner }
+
+function getDemo() {
+  const val = layoutSelect.value;
+  const rng = mulberry32(Date.now() >>> 0);
+  if (val === 'short' || val === 'long') {
+    if (demoState && demoState.layoutValue === val) {
+      return { perm: demoState.perm, prisoner: demoState.prisoner };
+    }
+    const L = val === 'short' ? 8 : 60;
+    const { perm, cycle } = makeCycleLayout(L, rng);
+    const prisoner = cycle[0];
+    demoState = { layoutValue: val, perm, prisoner };
+    prisonerInput.value = prisoner;      // показываем, какого заключённого ведём
+    return { perm, prisoner };
   }
+  // Случайная раскладка: каждый раз новая; заключённый — из поля или случайный.
+  demoState = null;
+  const perm = shufflePerm(N, rng);
+  let p = Math.floor(Number(prisonerInput.value) || 0);
+  if (p < 1 || p > N) p = 1 + Math.floor(rng() * N);
+  return { perm, prisoner: p };
 }
 
 // Анимация одного забега заключённого по стратегии циклов.
@@ -535,12 +563,14 @@ async function startAnimation(perm, prisoner, delayMs) {
 function resetAnimation() {
   animToken++;            // отменяем идущую анимацию
   currentPerm = null;
+  demoState = null;
   logEl.innerHTML = '';
   drawGrid(shufflePerm(N, mulberry32(12345)), null);
 }
 
 animBtn.addEventListener('click', () => {
-  startAnimation(getLayoutPerm(), 1, currentSpeed());
+  const { perm, prisoner } = getDemo();
+  startAnimation(perm, prisoner, currentSpeed());
 });
 animResetBtn.addEventListener('click', resetAnimation);
 
