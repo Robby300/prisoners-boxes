@@ -145,13 +145,12 @@
     </section>
 
     <section id="animation">
-      <h2>Демонстрация: забег по циклу</h2>
+      <h2>Демонстрация: забег группы</h2>
       <div class="row controls">
-        <label for="layoutSelect">Раскладка:</label>
-        <select id="layoutSelect">
-          <option value="random">Случайная</option>
-          <option value="short">Короткий цикл (успех)</option>
-          <option value="long">Длинный цикл (провал)</option>
+        <label for="strategySelect">Стратегия:</label>
+        <select id="strategySelect">
+          <option value="random">Случайный перебор</option>
+          <option value="loop" selected>Стратегия циклов</option>
         </select>
         <label for="speedSelect">Скорость:</label>
         <select id="speedSelect">
@@ -161,6 +160,7 @@
         </select>
         <label for="prisonerInput">Заключённый №:</label>
         <input type="number" id="prisonerInput" min="1" max="100" placeholder="случ." style="width:90px;">
+        <button id="reshuffleBtn" class="ghost">Сбросить коробочки</button>
         <button id="animBtn">Показать забег</button>
         <button id="animResetBtn" class="ghost">Заново</button>
       </div>
@@ -349,8 +349,8 @@ function runSimulation() {
   setCard(document.getElementById('randCard'), res.runs, res.randWins, res.randRate);
   setCard(document.getElementById('loopCard'), res.runs, res.loopWins, res.loopRate);
   if (autoAnimCheck.checked) {
-    const { perm, prisoner, cycle } = getDemo();
-    startGroupRun(perm, { cycle, first: prisoner }, currentSpeed());
+    const { perm, prisoner, strategy } = getDemo();
+    startGroupRun(perm, strategy, currentSpeed());
   }
 }
 
@@ -369,9 +369,10 @@ resetBtn.addEventListener('click', resetSimulation);
 // --- Анимация ---
 const gridCanvas = document.getElementById('grid');
 const ctx = gridCanvas.getContext('2d');
-const layoutSelect = document.getElementById('layoutSelect');
+const strategySelect = document.getElementById('strategySelect');
 const speedSelect = document.getElementById('speedSelect');
 const prisonerInput = document.getElementById('prisonerInput');
+const reshuffleBtn = document.getElementById('reshuffleBtn');
 const animBtn = document.getElementById('animBtn');
 const animResetBtn = document.getElementById('animResetBtn');
 const logEl = document.getElementById('log');
@@ -442,7 +443,7 @@ function drawGrid(perm, state) {
     statusText = `ПРОВАЛ: заключённый №${state.prisoner} не успел за ${LIMIT} попыток`;
   } else if (state.status === 'saved') {
     ctx.fillStyle = PALETTE.green;
-    statusText = 'ГРУППА СПАСЕНА — все заключённые нашли свои номера';
+    statusText = 'Все показанные заключённые нашли свои номера';
   } else {
     statusText = `Заключённый №${state.prisoner} · шаг ${state.step}/${LIMIT} · ищу номер ${state.prisoner}`;
   }
@@ -505,41 +506,34 @@ function appendLog(text, cls) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
-// Демо-забег: возвращает { perm, prisoner, cycle }.
-// Для «Короткого/Длинного цикла» строим детерминированную демонстрационную
-// раскладку с циклом из случайных номеров и переиспользуем её, пока выбран
-// тот же тип. cycle — номера цикла в порядке прохода (забег группы идёт по нему).
-let demoState = null;   // { layoutValue, perm, prisoner, cycle }
-
-function getDemo() {
-  const val = layoutSelect.value;
-  const rng = mulberry32(Date.now() >>> 0);
-  if (val === 'short' || val === 'long') {
-    if (demoState && demoState.layoutValue === val) {
-      prisonerInput.value = demoState.prisoner;   // демо-цикл ведёт своего заключённого
-      return { perm: demoState.perm, prisoner: demoState.prisoner, cycle: demoState.cycle };
-    }
-    const L = val === 'short' ? 8 : 60;
-    const { perm, cycle } = makeCycleLayout(L, rng);
-    const prisoner = cycle[0];
-    demoState = { layoutValue: val, perm, prisoner, cycle };
-    prisonerInput.value = prisoner;      // показываем, какого заключённого ведём
-    return { perm, prisoner, cycle };
-  }
-  // Случайная раскладка: каждый раз новая; стартуем с заключённого из поля или случайного.
-  demoState = null;
-  const perm = shufflePerm(N, rng);
-  let p = Math.floor(Number(prisonerInput.value) || 0);
-  if (p < 1 || p > N) p = 1 + Math.floor(rng() * N);
-  return { perm, prisoner: p, cycle: null };
+function newRandomLayout() {
+  currentPerm = shufflePerm(N, mulberry32(Date.now() >>> 0));
+  return currentPerm;
 }
 
-// Анимация одного заключённого по стратегии циклов.
+// «Сбросить коробочки»: новая случайная раскладка и чистая сетка.
+function reshuffleBoxes() {
+  animToken++;              // отменяем идущую анимацию
+  newRandomLayout();
+  logEl.innerHTML = '';
+  drawGrid(currentPerm, null);
+}
+
+// Демо-забег: раскладка — текущие коробочки, заключённый — из поля или случайный.
+function getDemo() {
+  const rng = mulberry32(Date.now() >>> 0);
+  let p = Math.floor(Number(prisonerInput.value) || 0);
+  if (p < 1 || p > N) p = 1 + Math.floor(rng() * N);
+  return { perm: currentPerm, prisoner: p, strategy: strategySelect.value };
+}
+
+// Анимация одного заключённого по стратегии циклов:
+// начать с ящика со своим номером, читать номер внутри и переходить к этому ящику.
 // Возвращает { found, frame } или null, если анимацию отменили (Сброс/Заново).
 async function animatePrisoner(perm, prisoner, delayMs) {
   const token = animToken;
   prisonerInput.value = prisoner;   // поле показывает текущего заключённого по ходу забега
-  appendLog(`Заключённый №${prisoner} начинает с ящика №${prisoner}.`);
+  appendLog(`Заключённый №${prisoner} начинает с ящика №${prisoner} (со своей карточкой).`);
   let cur = prisoner;
   const path = [];
   for (let step = 1; step <= LIMIT; step++) {
@@ -553,6 +547,7 @@ async function animatePrisoner(perm, prisoner, delayMs) {
       : `Шаг ${step}: ящик ${cur} → номер ${num} → идём к ящику ${num}`);
     if (token !== animToken) return null;
     await sleep(delayMs);
+    if (token !== animToken) return null;
     if (found) {
       drawGrid(perm, { prisoner, path, cur, next: null, step, status: 'success' });
       appendLog(`УСПЕХ за ${path.length} шагов.`, 'ok');
@@ -565,52 +560,77 @@ async function animatePrisoner(perm, prisoner, delayMs) {
   return { found: false, frame: { prisoner, path, cur, step: LIMIT } };
 }
 
-// Забег группы: заключённые идут по стратегии циклов один за другим.
-// Останавливаемся при первом провале (группа проиграла) или когда показаны все.
-async function startGroupRun(perm, opts, delayMs) {
+// Анимация одного заключённого по случайному перебору: открывает случайные ящики.
+async function animateRandom(perm, prisoner, delayMs) {
+  const token = animToken;
+  prisonerInput.value = prisoner;
+  appendLog(`Заключённый №${prisoner} открывает случайные ящики и ищет свою карточку.`);
+  const order = shufflePerm(N, mulberry32(Date.now() >>> 0)).slice(0, LIMIT);
+  const path = [];
+  for (let step = 1; step <= order.length; step++) {
+    path.push(order[step - 1]);
+    const cur = order[step - 1];
+    const num = inBox(perm, cur);
+    const found = num === prisoner;
+    const next = found ? null : order[step];
+    drawGrid(perm, { prisoner, path, cur, next, step });
+    appendLog(found
+      ? `Шаг ${step}: ящик ${cur} → номер ${num} — нашёл свой номер!`
+      : `Шаг ${step}: ящик ${cur} → номер ${num} — не то, пробуем другой`);
+    if (token !== animToken) return null;
+    await sleep(delayMs);
+    if (token !== animToken) return null;
+    if (found) {
+      drawGrid(perm, { prisoner, path, cur, next: null, step, status: 'success' });
+      appendLog(`УСПЕХ за ${path.length} шагов.`, 'ok');
+      return { found: true, frame: { prisoner, path, cur, step } };
+    }
+  }
+  drawGrid(perm, { prisoner, path, cur, next: null, step: LIMIT, status: 'fail' });
+  appendLog(`${LIMIT} попыток кончились — ПРОВАЛ.`, 'bad');
+  return { found: false, frame: { prisoner, path, cur, step: LIMIT } };
+}
+
+// Забег группы: заключённые идут один за другим по выбранной стратегии.
+// Останавливаемся при первом провале (группа проиграла) или после показа нескольких.
+async function startGroupRun(perm, strategy, delayMs) {
   const token = ++animToken;
   currentPerm = perm;
   logEl.innerHTML = '';
-  const { cycle, first } = opts || {};
+  const rng = mulberry32(Date.now() >>> 0);
+  // Случайный перебор дольше — показываем меньше заключённых.
+  const CAP = strategy === 'random' ? 3 : 8;
 
-  // Порядок заключённых: для демо-цикла — весь цикл подряд, иначе случайные разные.
   const order = [];
-  if (cycle && cycle.length) {
-    const start = first != null ? cycle.indexOf(first) : 0;
-    const s = start >= 0 ? start : 0;
-    for (let i = 0; i < cycle.length; i++) order.push(cycle[(s + i) % cycle.length]);
-  } else {
-    const rng = mulberry32(Date.now() >>> 0);
-    const tried = new Set();
-    const CAP = 10;
-    // Стартуем с выбранного заключённого, дальше — случайные разные.
-    if (first != null && first >= 1 && first <= N) {
-      order.push(first);
-      tried.add(first);
-    }
-    while (order.length < CAP) {
-      let p;
-      do { p = 1 + Math.floor(rng() * N); } while (tried.has(p));
-      tried.add(p);
-      order.push(p);
-    }
+  const tried = new Set();
+  let first = Math.floor(Number(prisonerInput.value) || 0);
+  if (first < 1 || first > N) first = 1 + Math.floor(rng() * N);
+  order.push(first);
+  tried.add(first);
+  while (order.length < CAP) {
+    let p;
+    do { p = 1 + Math.floor(rng() * N); } while (tried.has(p));
+    tried.add(p);
+    order.push(p);
   }
 
   let successes = 0;
   for (const p of order) {
     if (token !== animToken) return;
-    const res = await animatePrisoner(perm, p, delayMs);
+    const res = strategy === 'random'
+      ? await animateRandom(perm, p, delayMs)
+      : await animatePrisoner(perm, p, delayMs);
     if (res === null) return;                     // анимацию отменили
     if (!res.found) {
       appendLog('Провал одного заключённого = провал всей группы.', 'bad');
       return;
     }
     successes++;
-    if (cycle ? successes === cycle.length : successes >= order.length) {
+    if (successes >= order.length) {
       drawGrid(perm, { ...res.frame, status: 'saved' });
-      appendLog(cycle
-        ? 'Все заключённые цикла нашли свои номера. Группа спасена!'
-        : `Показаны ${order.length} заключённых — все нашли свои номера. Группа спасена, если нет цикла длиннее ${LIMIT}.`,
+      appendLog(strategy === 'loop'
+        ? `Показаны ${order.length} заключённых — все нашли. Группа спасена, если нет цикла длиннее ${LIMIT}.`
+        : `Показаны ${order.length} заключённых — все нашли. Но для 100 человек случайный перебор почти всегда проигрывает.`,
         'ok');
       return;
     }
@@ -620,16 +640,16 @@ async function startGroupRun(perm, opts, delayMs) {
 
 function resetAnimation() {
   animToken++;            // отменяем идущую анимацию
-  currentPerm = null;
-  demoState = null;
+  if (!currentPerm) currentPerm = newRandomLayout();
   logEl.innerHTML = '';
-  drawGrid(shufflePerm(N, mulberry32(12345)), null);
+  drawGrid(currentPerm, null);
 }
 
 animBtn.addEventListener('click', () => {
-  const { perm, prisoner, cycle } = getDemo();
-  startGroupRun(perm, { cycle, first: prisoner }, currentSpeed());
+  const { perm, prisoner, strategy } = getDemo();
+  startGroupRun(perm, strategy, currentSpeed());
 });
+reshuffleBtn.addEventListener('click', reshuffleBoxes);
 animResetBtn.addEventListener('click', resetAnimation);
 
 // Стартовая отрисовка сетки.
