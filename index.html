@@ -538,6 +538,7 @@ function getDemo() {
 // Возвращает { found, frame } или null, если анимацию отменили (Сброс/Заново).
 async function animatePrisoner(perm, prisoner, delayMs) {
   const token = animToken;
+  prisonerInput.value = prisoner;   // поле показывает текущего заключённого по ходу забега
   appendLog(`Заключённый №${prisoner} начинает с ящика №${prisoner}.`);
   let cur = prisoner;
   const path = [];
