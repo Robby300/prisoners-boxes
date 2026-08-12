@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>100 заключённых и 100 ящиков</title>
+<style>
+  :root {
+    --page:  #14161a;
+    --bg:    #101318;
+    --panel: #1d2026;
+    --gray:  #3a4150;
+    --text:  #eaeaea;
+    --muted: #9aa3b2;
+    --gold:  #f0c040;
+    --green: #3fbf7f;
+    --red:   #e02424;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--page);
+    color: var(--text);
+    font-family: ui-monospace, 'Cascadia Mono', 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 16px 40px;
+    gap: 20px;
+  }
+  header, main, footer { width: 100%; max-width: 880px; }
+  h1 {
+    font-size: 20px; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--gold);
+  }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 6px; line-height: 1.5; }
+  section {
+    background: var(--panel); border: 2px solid var(--gray);
+    padding: 16px;
+  }
+  section h2 {
+    font-size: 13px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 12px;
+  }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  label { font-size: 13px; color: var(--muted); }
+  input[type=number] {
+    width: 110px; padding: 6px 8px; font: inherit; font-size: 14px;
+    color: var(--text); background: var(--page);
+    border: 2px solid var(--gray); border-radius: 0;
+  }
+  input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--gold); }
+  select {
+    padding: 6px 8px; font: inherit; font-size: 14px; color: var(--text);
+    background: var(--page); border: 2px solid var(--gray); border-radius: 0;
+  }
+  button {
+    padding: 8px 14px; font: inherit; font-size: 13px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase; color: var(--page);
+    background: var(--gold); border: 2px solid var(--gold); border-radius: 0;
+    cursor: pointer;
+  }
+  button:active { transform: translate(2px, 2px); }
+  button.ghost { background: transparent; color: var(--gold); }
+  button.ghost:hover { background: var(--gray); }
+
+  /* ===== Карточки результатов ===== */
+  #results .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { #results .cards { grid-template-columns: 1fr; } }
+  .card { border: 2px solid var(--gray); padding: 12px; background: var(--page); }
+  .card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .card .nums { font-size: 13px; color: var(--text); line-height: 1.6; margin-bottom: 8px; }
+  .card .nums b { color: var(--gold); }
+  .bar {
+    position: relative; height: 18px; border: 2px solid var(--gray);
+    background: var(--gray); overflow: hidden;
+  }
+  .bar .fill-green { position: absolute; top: 0; left: 0; bottom: 0; background: var(--green); }
+  .bar .fill-red   { position: absolute; top: 0; right: 0; bottom: 0; background: var(--red); }
+  .bar .mark {
+    position: absolute; top: -3px; bottom: -3px; width: 0;
+    border-left: 2px solid var(--gold);
+  }
+  .card .theory { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .card .theory b { color: var(--gold); }
+
+  /* ===== Анимация ===== */
+  #animation .controls { margin-bottom: 12px; }
+  canvas {
+    display: block; max-width: 100%; height: auto;
+    border: 2px solid var(--gray);
+    image-rendering: pixelated;
+    background: var(--bg);
+  }
+  #log {
+    margin-top: 12px; max-height: 180px; overflow-y: auto;
+    border: 2px solid var(--gray); background: var(--page);
+    padding: 8px; font-size: 12px; line-height: 1.6;
+  }
+  #log .ok { color: var(--green); font-weight: 700; }
+  #log .bad { color: var(--red); font-weight: 700; }
+
+  /* ===== Правила ===== */
+  #rules summary { cursor: pointer; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--gold); }
+  #rules p, #rules li { font-size: 13px; color: var(--muted); line-height: 1.7; margin-top: 8px; }
+  #rules ul { padding-left: 20px; }
+  footer { color: var(--muted); font-size: 12px; text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>100 заключённых и 100 ящиков</h1>
+    <p class="sub">Сравни две стратегии: слепой случайный перебор против стратегии циклов. Запусти тысячи прогонов — и посмотри, как разрыв в шансах бросается в глаза.</p>
+  </header>
+
+  <main>
+    <section id="controls">
+      <h2>Статистика прогонов</h2>
+      <div class="row">
+        <label for="runsInput">Прогонов:</label>
+        <input type="number" id="runsInput" value="1000" min="0" max="100000">
+        <button class="ghost" data-runs="100">100</button>
+        <button class="ghost" data-runs="1000">1000</button>
+        <button class="ghost" data-runs="5000">5000</button>
+        <button id="runBtn">Запустить</button>
+        <button id="resetBtn" class="ghost">Сброс</button>
+        <label style="margin-left:auto;"><input type="checkbox" id="autoAnim"> показывать анимацию после прогона</label>
+      </div>
+    </section>
+
+    <section id="results">
+      <h2>Результат: все освобождены?</h2>
+      <div class="cards">
+        <div class="card" id="randCard">
+          <h3>Случайный перебор</h3>
+          <div class="nums">Прогонов: <span class="n-runs">—</span> · Побед: <span class="n-wins">—</span> · Доля: <span class="n-rate">—</span></div>
+          <div class="bar"><div class="fill-green"></div><div class="fill-red"></div></div>
+          <div class="theory">Теория: шанс ≈ <b>0%</b></div>
+        </div>
+        <div class="card" id="loopCard">
+          <h3>Стратегия циклов</h3>
+          <div class="nums">Прогонов: <span class="n-runs">—</span> · Побед: <span class="n-wins">—</span> · Доля: <span class="n-rate">—</span></div>
+          <div class="bar"><div class="fill-green"></div><div class="fill-red"></div><div class="mark"></div></div>
+          <div class="theory">Теория: шанс ≈ <b>31%</b> (золотая метка)</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="animation">
+      <h2>Демонстрация: забег по циклу</h2>
+      <div class="row controls">
+        <label for="layoutSelect">Раскладка:</label>
+        <select id="layoutSelect">
+          <option value="random">Случайная</option>
+          <option value="short">Короткий цикл (успех)</option>
+          <option value="long">Длинный цикл (провал)</option>
+        </select>
+        <label for="speedSelect">Скорость:</label>
+        <select id="speedSelect">
+          <option value="100">быстро</option>
+          <option value="250" selected>средне</option>
+          <option value="500">медленно</option>
+        </select>
+        <button id="animBtn">Показать забег</button>
+        <button id="animResetBtn" class="ghost">Заново</button>
+      </div>
+      <canvas id="grid" width="400" height="448"></canvas>
+      <div id="log"></div>
+    </section>
+
+    <section id="rules">
+      <details>
+        <summary>Как это работает</summary>
+        <ul>
+          <li>100 заключённых, 100 ящиков. В каждом ящике случайно лежит номер — это перестановка 1…100.</li>
+          <li>Каждый заключённый может открыть не больше <b>50</b> ящиков. Ищет свой номер. Исход общий: либо выживают все, либо не выживает никто.</li>
+          <li><b>Случайный перебор:</b> открыть 50 случайных ящиков. Шанс одного заключённого — ½, всех сразу — (½)<sup>100</sup> ≈ 0.</li>
+          <li><b>Стратегия циклов:</b> начать с ящика со своим номером, открыть, прочитать номер внутри и перейти к этому ящику — пока не найдёшь свой (максимум 50 шагов).</li>
+          <li>Раскладка — это перестановка, а она распадается на циклы. Заключённый всегда идёт по своему циклу. Все выживают <b>ровно тогда</b>, когда нет ни одного цикла длиннее 50.</li>
+          <li>Вероятность, что такого цикла нет: 1 − (1/51 + … + 1/100) ≈ <b>31%</b>. Это оптимальная стратегия — выше подняться нельзя.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <footer>Открыто двойным кликом · без сети и зависимостей · чистый HTML+JS</footer>
+
+<script>
+'use strict';
+// ================= Ядро логики =================
+
+const N = 100;          // число заключённых и ящиков
+const LIMIT = 50;       // сколько ящиков можно открыть
+const ROWS = 10;        // сетка 10×10 для отрисовки
+const COLS = 10;
+
+const PALETTE = {
+  bg:    '#101318',
+  panel: '#1d2026',
+  gray:  '#3a4150',
+  text:  '#eaeaea',
+  muted: '#9aa3b2',
+  gold:  '#f0c040',
+  green: '#3fbf7f',
+  red:   '#e02424'
+};
+
+// Детерминированный PRNG — позволяет воспроизвести конкретную раскладку.
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Перестановка [1..n], Фишер–Йетс.
+function shufflePerm(n, rng) {
+  const arr = new Array(n);
+  for (let i = 0; i < n; i++) arr[i] = i + 1;
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+  return arr;
+}
+
+// Номер внутри ящика. Единственное место, где переводим 1-индексацию в 0.
+function inBox(perm, box) { return perm[box - 1]; }
+
+// Раскладка с ровно одним циклом 1→2→…→L→1, остальные — неподвижные точки.
+// Для демо: L=8 — короткий цикл (успех), L=60 — длинный (провал).
+function makeCycleLayout(L) {
+  const perm = new Array(N);
+  for (let i = 0; i < N; i++) perm[i] = i + 1;
+  for (let i = 0; i < L - 1; i++) perm[i] = i + 2;
+  perm[L - 1] = 1;
+  return perm;
+}
+
+// Длина самого длинного цикла в перестановке. Ключ к стратегии циклов.
+function longestCycle(perm) {
+  const visited = new Array(N).fill(false);
+  let max = 0;
+  for (let i = 0; i < N; i++) {
+    if (visited[i]) continue;
+    let len = 0, cur = i;
+    while (!visited[cur]) {
+      visited[cur] = true;
+      len++;
+      cur = perm[cur] - 1;
+    }
+    if (len > max) max = len;
+  }
+  return max;
+}
+
+// Проход одного заключённого по стратегии циклов.
+// Возвращает { found, path } — найден ли номер и пройденные ящики.
+function walkLoop(perm, prisoner, limit) {
+  let cur = prisoner;
+  const path = [];
+  for (let step = 1; step <= limit; step++) {
+    path.push(cur);
+    const num = inBox(perm, cur);
+    if (num === prisoner) return { found: true, path };
+    cur = num;
+  }
+  return { found: false, path };
+}
+
+// Случайный перебор одного заключённого: limit случайных различных ящиков.
+function walkRandom(perm, prisoner, limit, rng) {
+  const order = shufflePerm(N, rng);
+  for (let i = 0; i < limit; i++) {
+    if (inBox(perm, order[i]) === prisoner) return true;
+  }
+  return false;
+}
+
+// Исход одного прогона: все выжили или нет (общий вердикт).
+// Цикловая стратегия: успех ⟺ нет цикла длиннее LIMIT.
+function trialLoop(perm) {
+  return longestCycle(perm) <= LIMIT;
+}
+
+// Случайная стратегия: каждый из 100 заключённых ищет случайно.
+// Ранний выход корректен — победа требует успеха всех.
+function trialRandom(perm, rng) {
+  for (let p = 1; p <= N; p++) {
+    if (!walkRandom(perm, p, LIMIT, rng)) return false;
+  }
+  return true;
+}
+
+// Партия: обе стратегии прогоняются на ОДНОЙ раскладке в каждом прогоне —
+// попарное сравнение честнее и нагляднее.
+function runBatch(runs, rng) {
+  let loopWins = 0, randWins = 0;
+  for (let i = 0; i < runs; i++) {
+    const perm = shufflePerm(N, rng);
+    if (trialLoop(perm)) loopWins++;
+    if (trialRandom(perm, rng)) randWins++;
+  }
+  return {
+    runs,
+    loopWins, randWins,
+    loopRate: runs ? loopWins / runs : 0,
+    randRate: runs ? randWins / runs : 0
+  };
+}
+
+// ==== UI ====
+// ================= Интерфейс =================
+
+// --- Статистика ---
+const runsInput = document.getElementById('runsInput');
+const runBtn = document.getElementById('runBtn');
+const resetBtn = document.getElementById('resetBtn');
+const autoAnimCheck = document.getElementById('autoAnim');
+
+function setCard(card, runs, wins, rate) {
+  card.querySelector('.n-runs').textContent = runs;
+  card.querySelector('.n-wins').textContent = wins;
+  card.querySelector('.n-rate').textContent = rate === null ? '—' : (rate * 100).toFixed(1) + '%';
+  const fillGreen = card.querySelector('.fill-green');
+  const fillRed = card.querySelector('.fill-red');
+  const pct = rate === null ? 0 : rate * 100;
+  fillGreen.style.width = pct + '%';
+  fillRed.style.width = (100 - pct) + '%';
+}
+
+function runSimulation() {
+  const runs = Math.min(100000, Math.max(0, Math.floor(Number(runsInput.value) || 0)));
+  // Ноль прогонов — не запуск: показываем «—», как до старта.
+  if (runs === 0) {
+    setCard(document.getElementById('randCard'), '—', '—', null);
+    setCard(document.getElementById('loopCard'), '—', '—', null);
+    return;
+  }
+  const rng = mulberry32(Date.now() >>> 0);
+  const res = runBatch(runs, rng);
+  setCard(document.getElementById('randCard'), res.runs, res.randWins, res.randRate);
+  setCard(document.getElementById('loopCard'), res.runs, res.loopWins, res.loopRate);
+  if (autoAnimCheck.checked) {
+    startAnimation(shufflePerm(N, rng), 1, currentSpeed());
+  }
+}
+
+function resetSimulation() {
+  setCard(document.getElementById('randCard'), '—', '—', null);
+  setCard(document.getElementById('loopCard'), '—', '—', null);
+  resetAnimation();
+}
+
+document.querySelectorAll('[data-runs]').forEach(b => {
+  b.addEventListener('click', () => { runsInput.value = b.dataset.runs; });
+});
+runBtn.addEventListener('click', runSimulation);
+resetBtn.addEventListener('click', resetSimulation);
+
+// --- Анимация ---
+const gridCanvas = document.getElementById('grid');
+const ctx = gridCanvas.getContext('2d');
+const layoutSelect = document.getElementById('layoutSelect');
+const speedSelect = document.getElementById('speedSelect');
+const animBtn = document.getElementById('animBtn');
+const animResetBtn = document.getElementById('animResetBtn');
+const logEl = document.getElementById('log');
+
+const CELL = 40;          // сторона ячейки
+const STATUS_H = 48;      // высота статус-полосы сверху
+const GAP = 2;            // зазор между ячейками
+
+let currentPerm = null;
+let animToken = 0;        // счётчик отмены анимации
+
+// Пиксельные цифры 3×5 для отрисовки номеров без загрузки шрифта.
+const DIGITS = {
+  '0': ['111','101','101','101','111'],
+  '1': ['001','001','001','001','001'],
+  '2': ['111','001','111','100','111'],
+  '3': ['111','001','111','001','111'],
+  '4': ['101','101','111','001','001'],
+  '5': ['111','100','111','001','111'],
+  '6': ['111','100','111','101','111'],
+  '7': ['111','001','001','001','001'],
+  '8': ['111','101','111','101','111'],
+  '9': ['111','101','111','001','111']
+};
+
+function drawPixelNumber(x, y, n, scale, color) {
+  ctx.fillStyle = color;
+  const s = String(n);
+  for (let i = 0; i < s.length; i++) {
+    const d = DIGITS[s[i]];
+    for (let r = 0; r < 5; r++) {
+      for (let c = 0; c < 3; c++) {
+        if (d[r][c] === '1') {
+          ctx.fillRect(x + i * (3 * scale + GAP) + c * scale, y + r * scale, scale, scale);
+        }
+      }
+    }
+  }
+}
+
+// Прямоугольник ячейки ящика (1-индексный box).
+function cellRect(box) {
+  const col = (box - 1) % COLS;
+  const row = Math.floor((box - 1) / COLS);
+  return { x: col * CELL, y: STATUS_H + row * CELL, w: CELL, h: CELL };
+}
+
+// Полная перерисовка кадра.
+// state: { prisoner, path[], cur, next, step, status? } или null — только сетка.
+function drawGrid(perm, state) {
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = PALETTE.bg;
+  ctx.fillRect(0, 0, gridCanvas.width, gridCanvas.height);
+
+  // Статус-полоса.
+  ctx.fillStyle = PALETTE.panel;
+  ctx.fillRect(0, 0, gridCanvas.width, STATUS_H);
+  ctx.fillStyle = PALETTE.text;
+  ctx.font = '16px ui-monospace, monospace';
+  let statusText;
+  if (!state) {
+    statusText = 'Выберите раскладку и нажмите «Показать забег»';
+  } else if (state.status === 'success') {
+    ctx.fillStyle = PALETTE.green;
+    statusText = `УСПЕХ! Заключённый №${state.prisoner} нашёл свой номер на шаге ${state.path.length}`;
+  } else if (state.status === 'fail') {
+    ctx.fillStyle = PALETTE.red;
+    statusText = `ПРОВАЛ: заключённый №${state.prisoner} не успел за ${LIMIT} попыток`;
+  } else {
+    statusText = `Заключённый №${state.prisoner} · шаг ${state.step}/${LIMIT} · ищу номер ${state.prisoner}`;
+  }
+  ctx.fillText(statusText, 10, STATUS_H / 2 + 6);
+
+  // Ящики.
+  const visited = new Set(state ? state.path : []);
+  for (let box = 1; box <= N; box++) {
+    const r = cellRect(box);
+    const isOpen = state && visited.has(box);
+    const isActive = state && state.cur === box;
+
+    ctx.fillStyle = PALETTE.panel;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+
+    if (isActive) {
+      ctx.fillStyle = PALETTE.gold;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+    } else if (isOpen) {
+      ctx.fillStyle = PALETTE.gray;
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+    } else {
+      ctx.fillStyle = PALETTE.gray;
+      ctx.fillRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
+    }
+
+    if (isActive) {
+      drawPixelNumber(r.x + (r.w - 16) / 2, r.y + (r.h - 10) / 2, inBox(perm, box), 2, PALETTE.page);
+    } else if (isOpen) {
+      drawPixelNumber(r.x + (r.w - 16) / 2, r.y + (r.h - 10) / 2, inBox(perm, box), 2, PALETTE.text);
+    } else {
+      drawPixelNumber(r.x + 4, r.y + 4, box, 1, PALETTE.muted);
+    }
+  }
+
+  // Линия перехода от активного ящика к следующему.
+  if (state && state.next && !state.status) {
+    const from = cellRect(state.cur);
+    const to = cellRect(state.next);
+    ctx.strokeStyle = PALETTE.gold;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(from.x + from.w / 2, from.y + from.h / 2);
+    ctx.lineTo(to.x + to.w / 2, to.y + to.h / 2);
+    ctx.stroke();
+  }
+}
+
+function currentSpeed() {
+  return Number(speedSelect.value) || 250;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function appendLog(text, cls) {
+  const div = document.createElement('div');
+  if (cls) div.className = cls;
+  div.textContent = text;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function getLayoutPerm() {
+  switch (layoutSelect.value) {
+    case 'short': return makeCycleLayout(8);
+    case 'long':  return makeCycleLayout(60);
+    default:      return shufflePerm(N, mulberry32(Date.now() >>> 0));
+  }
+}
+
+// Анимация одного забега заключённого по стратегии циклов.
+async function startAnimation(perm, prisoner, delayMs) {
+  const token = ++animToken;
+  currentPerm = perm;
+  logEl.innerHTML = '';
+  appendLog(`Заключённый №${prisoner} начинает с ящика №${prisoner}.`);
+  let cur = prisoner;
+  const path = [];
+  for (let step = 1; step <= LIMIT; step++) {
+    path.push(cur);
+    const num = inBox(perm, cur);
+    const found = num === prisoner;
+    const next = found ? null : num;
+    drawGrid(perm, { prisoner, path, cur, next, step });
+    appendLog(found
+      ? `Шаг ${step}: ящик ${cur} → номер ${num} — нашёл свой номер!`
+      : `Шаг ${step}: ящик ${cur} → номер ${num} → идём к ящику ${num}`);
+    if (token !== animToken) return;
+    await sleep(delayMs);
+    if (found) {
+      drawGrid(perm, { prisoner, path, cur, next: null, step, status: 'success' });
+      appendLog(`УСПЕХ за ${path.length} шагов.`, 'ok');
+      return;
+    }
+    cur = num;
+  }
+  drawGrid(perm, { prisoner, path, cur, next: null, step: LIMIT, status: 'fail' });
+  appendLog(`${LIMIT} попыток кончились — ПРОВАЛ.`, 'bad');
+}
+
+function resetAnimation() {
+  animToken++;            // отменяем идущую анимацию
+  currentPerm = null;
+  logEl.innerHTML = '';
+  drawGrid(shufflePerm(N, mulberry32(12345)), null);
+}
+
+animBtn.addEventListener('click', () => {
+  startAnimation(getLayoutPerm(), 1, currentSpeed());
+});
+animResetBtn.addEventListener('click', resetAnimation);
+
+// Стартовая отрисовка сетки.
+resetAnimation();
+</script>
+</body>
+</html>
